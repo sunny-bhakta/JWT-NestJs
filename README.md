@@ -18,8 +18,11 @@ A focused NestJS API that demonstrates how to issue and validate JSON Web Tokens
 ```bash
 npm install
 copy .env.example .env   # then edit the secrets!
+npm run start:dev
 
 ```
+
+> On macOS/Linux use `cp .env.example .env` instead of `copy`.
 
 The API listens on `http://localhost:3000` by default.
 
@@ -32,6 +35,7 @@ The API listens on `http://localhost:3000` by default.
 | `JWT_ACCESS_EXPIRES_IN` | Access token lifetime (e.g., `15m`, `1h`) |
 | `JWT_AUDIENCE` | Expected `aud` claim used by the JWT strategy |
 | `JWT_ISSUER` | Expected `iss` claim used by the JWT strategy |
+| `JWT_REFRESH_EXPIRES_IN` | Refresh token lifetime (default `7d`) |
 
 > 💡 Swap `JWT_ACCESS_SECRET` for RSA/ECDSA key pairs by pointing `JwtModule` to `privateKey`/`publicKey` files when you’re ready for asymmetric signing.
 
@@ -47,7 +51,7 @@ The passwords are hashed with bcrypt and stored only inside the in-memory user s
 ## API reference
 
 ### `POST /auth/login`
-Authenticates the user and returns a signed JWT.
+Authenticates the user and returns both access & refresh tokens.
 
 **Request body**
 ```json
@@ -63,6 +67,10 @@ Authenticates the user and returns a signed JWT.
   "accessToken": "<JWT>",
   "tokenType": "Bearer",
   "expiresIn": "15m",
+  "refreshToken": "<opaque-string>",
+
+  "refreshTokenExpiresIn": "7d",
+  "refreshTokenExpiresAt": "2026-02-01T10:00:00.000Z",
   "user": {
     "id": "1",
     "email": "ada@example.com",
@@ -70,26 +78,54 @@ Authenticates the user and returns a signed JWT.
     "roles": ["user"]
   }
 }
+
+> The `refreshToken` is a securely generated, non-guessable string used to obtain new access tokens without re-authenticating. It is opaque, meaning its contents are not meant to be interpreted by clients.
 ```
 
 ### `GET /profile`
 Protected route that validates the bearer token signature, issuer, audience, and expiration before returning the minimal profile derived from the token payload.
 
 ```bash
-# Login
+# Login (macOS/Linux)
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"ada@example.com","password":"ChangeMe123!"}'
 
-# For Windows
-curl -X POST http://localhost:3000/auth/login -H "Content-Type: application/json" -d "{\"email\":\"ada@example.com\",\"password\":\"ChangeMe123!\"}"
-
-# Use the returned token
+# Use the returned access token
 curl http://localhost:3000/profile \
   -H "Authorization: Bearer <token>"
+```
 
-  curl http://localhost:3000/profile ^
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJhZGFAZXhhbXBsZS5jb20iLCJyb2xlcyI6WyJ1c2VyIl0sImlhdCI6MTc2NzgwMDkxNywiZXhwIjoxNzcwMzkyOTE3LCJhdWQiOiJqd3QtbmVzdC1jbGllbnQiLCJpc3MiOiJqd3QtbmVzdC1hcGkifQ.V8i2254dp80Ff3cevvM_qA3R6tqvGz4bFV1Uft8E1mw"
+```cmd
+:: Windows CMD login
+curl -X POST http://localhost:3000/auth/login -H "Content-Type: application/json" -d "{\"email\":\"ada@example.com\",\"password\":\"ChangeMe123!\"}"
+
+:: Windows CMD profile
+curl http://localhost:3000/profile -H "Authorization: Bearer <token>"
+```
+
+### `POST /auth/refresh`
+Exchanges a valid refresh token for a brand new access/refresh pair (rotates tokens so the old refresh token can’t be reused).
+
+```bash
+curl -X POST http://localhost:3000/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"18O9crT834YmPlpPE0xVbqpm_r-qlbk-daJXXdXNzt0zVstGA4iEohuzvEkLSz69"}'
+```
+
+```cmd
+:: Windows CMD refresh
+curl -X POST http://localhost:3000/auth/refresh -H "Content-Type: application/json" -d "{\"refreshToken\":\"1QzZ5MwLXm1KAu8prjj6qg989plBFJlKkqLWt5Bn4ZBIvrdtjHlxbn0wUzGL5i3M\"}"
+```
+
+### `POST /auth/logout`
+Revokes the supplied refresh token (and the associated session).
+
+```bash
+curl -X POST http://localhost:3000/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<refresh-token-from-login>"}'
+```
 ```
 
 ## Testing & linting
@@ -102,7 +138,6 @@ npm run test
 ## Next steps
 
 - Replace the in-memory users list with a database lookup
-- Introduce refresh tokens + rotation for long-lived sessions
 - Persist issued tokens (by device) to support revocation and multi-session management
 
 Enjoy building securely! 🚀
