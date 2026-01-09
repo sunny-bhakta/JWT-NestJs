@@ -2,19 +2,20 @@
 
 ### Implementation
 - [x] Generate JWT on successful authentication
-- [x] Use strong secret keys or RSA/ECDSA key pairs
+- [x] Use strong secret keys 
+- [ ] RSA/ECDSA key pairs
 - [x] Set appropriate token expiration (`exp` claim)
 - [x] Store minimal user info in token payload
 - [x] Validate token signature and claims on each request
 - [x] Introduce refresh tokens + rotation
 
 ### Security
-- Use HTTPS for all token transmission
-- Store tokens securely (e.g., HTTP-only cookies or secure storage)
-- Avoid storing sensitive data in JWT payload
-- JWT security attacks & prevention
+- [x] Use HTTPS for all token transmission
+- [x] Store tokens securely (e.g., HTTP-only cookies or secure storage)
+- [x] Avoid storing sensitive data in JWT payload *(tokens now only include id/email/roles)*
+- [x] JWT security attacks & prevention *(documented in README “JWT security attacks & prevention” section)*
 - [x] Implement token revocation (blacklist/whitelist)
-- Rotate signing keys periodically
+- [x] Rotate signing keys periodically
 
 ### Best Practices
 - [x] Use short-lived access tokens and refresh tokens

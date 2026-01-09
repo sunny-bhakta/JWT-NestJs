@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RefreshTokensService } from './refresh-tokens.service';
+import { SigningKeysService } from './signing-keys.service';
 
 @Module({
   imports: [
@@ -25,21 +26,26 @@ import { RefreshTokensService } from './refresh-tokens.service';
         );
 
         return {
-        secret: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
-        signOptions: {
-          expiresIn,
-          audience: configService.get<string>(
-            'JWT_AUDIENCE',
-            'jwt-nest-client',
-          ),
-          issuer: configService.get<string>('JWT_ISSUER', 'jwt-nest-api'),
-        },
+          signOptions: {
+            expiresIn,
+            audience: configService.get<string>(
+              'JWT_AUDIENCE',
+              'jwt-nest-client',
+            ),
+            issuer: configService.get<string>('JWT_ISSUER', 'jwt-nest-api'),
+          },
         };
       },
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RefreshTokensService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RefreshTokensService,
+    SigningKeysService,
+  ],
   exports: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}
