@@ -31,11 +31,82 @@ The API listens on `http://localhost:3000` by default.
 | Key | Description |
 | --- | --- |
 | `PORT` | API port (defaults to 3000) |
-| `JWT_ACCESS_SECRET` | Strong random string or base64 key used to sign tokens |
+| `JWT_ACCESS_SECRET` | Strong random string or base64 key used to sign tokens (fallback when no keyset is provided) |
 | `JWT_ACCESS_EXPIRES_IN` | Access token lifetime (e.g., `15m`, `1h`) |
 | `JWT_AUDIENCE` | Expected `aud` claim used by the JWT strategy |
 | `JWT_ISSUER` | Expected `iss` claim used by the JWT strategy |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token lifetime (default `7d`) |
+| `JWT_KEYSET` | JSON array of signing keys (`[{"id":"key1","secret":"base64"}, ...]`) |
+| `JWT_ACTIVE_KEY_ID` | Optional override that selects which key from the keyset is currently active |
+| `HTTPS_KEY_PATH` | Path to the TLS private key (enables HTTPS when paired with `HTTPS_CERT_PATH`) |
+| `HTTPS_CERT_PATH` | Path to the TLS certificate chain |
+| `HTTPS_CA_PATH` | Optional path to a CA bundle if your certificate chain needs it |
+| `AUTH_COOKIES_ENABLED` | `true` to send tokens as HttpOnly cookies in addition to the JSON body |
+| `AUTH_COOKIE_DOMAIN` | Cookie domain (leave empty for localhost/dev) |
+| `AUTH_COOKIE_PATH` | Cookie path (defaults to `/`) |
+| `AUTH_COOKIE_SAME_SITE` | `lax`, `strict`, or `none` (use `none` for cross-site SPAs) |
+| `AUTH_COOKIE_SECURE` | Force the `Secure` flag (`true` requires HTTPS) |
+| `ACCESS_TOKEN_COOKIE_NAME` | Name for the access-token cookie |
+| `REFRESH_TOKEN_COOKIE_NAME` | Name for the refresh-token cookie |
+
+### Rotating access-token signing keys
+
+Set `JWT_KEYSET` to a JSON array so you can keep multiple symmetric keys online at once:
+
+```jsonc
+JWT_KEYSET=[
+  { "id": "key-2025-q4", "secret": "c2VjcmV0X2tleV8x", "primary": true },
+  { "id": "key-2026-q1", "secret": "c2VjcmV0X2tleV8y" }
+]
+```
+
+- The `secret` values can be plain strings or base64-encoded bytes (just make them long and random).
+- Mark the upcoming key with `primary: true` or set `JWT_ACTIVE_KEY_ID=key-2026-q1` when you are ready to switch.
+- Tokens issued before the rotation keep their `kid` header, so the `JwtStrategy` can still validate them using whatever key matches that ID.
+- If `JWT_KEYSET` is omitted, the app falls back to the legacy `JWT_ACCESS_SECRET` value.
+
+> Tip: treat `JWT_KEYSET` like any other credential—store it in your secret manager and automate rotations (e.g., cron job that updates the JSON and `JWT_ACTIVE_KEY_ID`).
+
+### Serving the API over HTTPS
+
+Provide certificate files and the server will automatically boot in HTTPS mode:
+
+```bash
+HTTPS_KEY_PATH=./certs/server.key
+HTTPS_CERT_PATH=./certs/server.crt
+npm run start:prod
+```
+
+For local testing you can create a self-signed pair:
+
+```bash
+openssl req -x509 -newkey rsa:4096 -nodes -keyout certs/server.key -out certs/server.crt -subj "/CN=localhost" -days 365
+```
+
+When HTTPS variables are omitted the app falls back to HTTP (suitable only for local development—always terminate TLS in production, either in Nest or a reverse proxy).
+
+### Issuing tokens via HttpOnly cookies
+
+Set `AUTH_COOKIES_ENABLED=true` to have `/auth/login` and `/auth/refresh` return the tokens both in the JSON payload *and* as HttpOnly cookies:
+
+- Access token cookie defaults to `access_token`, refresh token to `refresh_token`.
+- Cookies are `HttpOnly` and inherit the `Secure`, `SameSite`, `Domain`, and `Path` flags from the env vars above.
+- On logout the cookies are cleared so browsers automatically drop the credentials.
+
+This pattern keeps tokens away from `localStorage/sessionStorage`; browsers will automatically attach the cookies on HTTPS requests and block JavaScript from reading them, which mitigates XSS token theft. Combine this with CORS `credentials: true` (already enabled) and CSRF protections appropriate for your client architecture.
+
+### JWT security attacks & prevention
+
+| Threat | What it is | How this repo mitigates it |
+| --- | --- | --- |
+| Token replay | A stolen token is reused before it expires. | Short 15‑minute access-token TTL, refresh-token rotation with per-token revocation, and `logout`/`revokeAll` helpers. Consider recording token fingerprints in persistent storage for production. |
+| Theft via XSS | Malicious script exfiltrates tokens from browser storage. | Optional HttpOnly, Secure cookies keep tokens out of `localStorage`/`sessionStorage`. Keep HTTPS enabled, pair with CSP and CSRF defenses on the client. |
+| Signature confusion | Attacker swaps the algorithm or key type to bypass verification. | We only issue HS256 tokens and explicitly configure `passport-jwt` with our own secrets resolved by `kid`. Never accept tokens signed with unexpected algorithms or the `none` algorithm. |
+| Algorithm downgrades | Accepting a weaker algorithm than intended (e.g., HS256 vs. RS256) lets an attacker forge tokens. | Configure a single algorithm in the `JwtModule` and matching strategy, and refuse any header that doesn’t carry a known `kid`. If you later adopt RSA/ECDSA keys, configure separate verification public keys per algorithm to prevent downgrades. |
+| Token leakage over the wire | Plain HTTP or misconfigured TLS reveals credentials. | Built-in HTTPS support (or fronting reverse proxy) plus HSTS recommendation; CORS is limited to trusted origins with credentials enabled. |
+| Missing claim validation | Accepting tokens with wrong `iss`, `aud`, or expired `exp`. | `JwtStrategy` enforces issuer, audience, and expiration on every request; refresh tokens are rotated and invalidated after use. |
+
+> Checklist tie-in: these mitigations cover the remaining `JWT security attacks & prevention` item from `todo.md`. Extend this table with organization-specific controls (e.g., anomaly detection, device posture signals) as your threat model evolves.
 
 > 💡 Swap `JWT_ACCESS_SECRET` for RSA/ECDSA key pairs by pointing `JwtModule` to `privateKey`/`publicKey` files when you’re ready for asymmetric signing.
 
@@ -99,9 +170,16 @@ curl http://localhost:3000/profile \
 ```cmd
 :: Windows CMD login
 curl -X POST http://localhost:3000/auth/login -H "Content-Type: application/json" -d "{\"email\":\"ada@example.com\",\"password\":\"ChangeMe123!\"}"
-
+```
+```cmd
+https:
+curl --cacert certs/local-ca.crt https://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ada@example.com","password":"ChangeMe123!"}'
+```
+```
 :: Windows CMD profile
-curl http://localhost:3000/profile -H "Authorization: Bearer <token>"
+curl http://localhost:3000/profile -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleTEifQ.eyJzdWIiOiIxIiwiZW1haWwiOiJhZGFAZXhhbXBsZS5jb20iLCJyb2xlcyI6WyJ1c2VyIl0sImlhdCI6MTc2Nzk0ODgyNiwiZXhwIjoxNzY3OTQ5NzI2LCJhdWQiOiJqd3QtbmVzdC1jbGllbnQiLCJpc3MiOiJqd3QtbmVzdC1hcGkifQ.Xo8qm1VyiNR_A6vGkMVPvgOPONu74Hl-DLF9EVb6OFI"
 ```
 
 ### `POST /auth/refresh`
