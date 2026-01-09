@@ -6,17 +6,18 @@
 - [x] Set appropriate token expiration (`exp` claim)
 - [x] Store minimal user info in token payload
 - [x] Validate token signature and claims on each request
+- [x] Introduce refresh tokens + rotation
 
 ### Security
 - Use HTTPS for all token transmission
 - Store tokens securely (e.g., HTTP-only cookies or secure storage)
 - Avoid storing sensitive data in JWT payload
 - JWT security attacks & prevention
-- Implement token revocation (blacklist/whitelist)
+- [x] Implement token revocation (blacklist/whitelist)
 - Rotate signing keys periodically
 
 ### Best Practices
-- Use short-lived access tokens and refresh tokens
+- [x] Use short-lived access tokens and refresh tokens
 - Validate token audience (`aud`) and issuer (`iss`)
 - Limit token scope and permissions
 - Handle token errors gracefully
