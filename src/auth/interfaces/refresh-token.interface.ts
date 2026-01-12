@@ -7,10 +7,13 @@ export interface RefreshTokenMetadata {
   userAgent?: string;
 }
 
-export interface RefreshTokenRecord {
-  tokenHash: string;
+export interface RefreshSessionSnapshot {
+  sessionId: string;
+  familyId: string;
   user: SafeUser;
   createdAt: Date;
+  updatedAt: Date;
   expiresAt: Date;
+  maxExpiresAt: Date;
   metadata?: RefreshTokenMetadata;
 }

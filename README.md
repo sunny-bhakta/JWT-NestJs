@@ -1,4 +1,4 @@
-﻿# JWT NestJS Demo
+# JWT NestJS Demo
 
 A focused NestJS API that demonstrates how to issue and validate JSON Web Tokens (JWT) securely. It follows the checklist in `todo.md`, showing how to:
 
@@ -7,6 +7,7 @@ A focused NestJS API that demonstrates how to issue and validate JSON Web Tokens
 - Control token expiration through the `exp` claim
 - Keep token payloads lean (only user id, email, roles)
 - Validate token signatures and registered claims on every protected request
+- Issue per-device refresh sessions so each browser/app keeps an isolated token family
 
 ## Prerequisites
 
@@ -16,7 +17,7 @@ A focused NestJS API that demonstrates how to issue and validate JSON Web Tokens
 ## Quick start
 
 ```bash
-npm install
+npm install # install TypeORM/sqlite dependencies
 copy .env.example .env   # then edit the secrets!
 npm run start:dev
 
@@ -36,6 +37,7 @@ The API listens on `http://localhost:3000` by default.
 | `JWT_AUDIENCE` | Expected `aud` claim used by the JWT strategy |
 | `JWT_ISSUER` | Expected `iss` claim used by the JWT strategy |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token lifetime (default `7d`) |
+| `JWT_REFRESH_MAX_LIFETIME` | Sliding session lifetime cap (default `30d`) |
 | `JWT_KEYSET` | JSON array of signing keys (`[{"id":"key1","secret":"base64"}, ...]`) |
 | `JWT_ACTIVE_KEY_ID` | Optional override that selects which key from the keyset is currently active |
 | `HTTPS_KEY_PATH` | Path to the TLS private key (enables HTTPS when paired with `HTTPS_CERT_PATH`) |
@@ -48,6 +50,7 @@ The API listens on `http://localhost:3000` by default.
 | `AUTH_COOKIE_SECURE` | Force the `Secure` flag (`true` requires HTTPS) |
 | `ACCESS_TOKEN_COOKIE_NAME` | Name for the access-token cookie |
 | `REFRESH_TOKEN_COOKIE_NAME` | Name for the refresh-token cookie |
+| `DB_PATH` | Path to the SQLite database file used for refresh sessions (default `data/app.db`) |
 
 ### Rotating access-token signing keys
 
@@ -94,6 +97,18 @@ Set `AUTH_COOKIES_ENABLED=true` to have `/auth/login` and `/auth/refresh` return
 - On logout the cookies are cleared so browsers automatically drop the credentials.
 
 This pattern keeps tokens away from `localStorage/sessionStorage`; browsers will automatically attach the cookies on HTTPS requests and block JavaScript from reading them, which mitigates XSS token theft. Combine this with CORS `credentials: true` (already enabled) and CSRF protections appropriate for your client architecture.
+
+### Per-device refresh sessions
+
+- Every login creates (or resumes) a refresh *session* identified by a `sessionId`. Each session tracks metadata such as `deviceId`, `deviceName`, IP, and user agent.
+- Refresh tokens are bound to their session. Consuming a refresh token rotates it but keeps the session alive, so multiple devices can stay logged in simultaneously without stepping on one another.
+- Each session gets a `familyId`, so you can correlate all refreshes that stem from the same authentication event and revoke the entire family when one token leaks.
+- Sliding expiration keeps engaged users online: every refresh extends `expiresAt` up to a hard cap defined by `JWT_REFRESH_MAX_LIFETIME` (exposed as `maxExpiresAt`). Once the cap is reached the user must re-authenticate.
+- Responses now include a `session` object (sessionId, familyId, expiresAt, maxExpiresAt, metadata) so clients can persist identifiers for telemetry or “manage devices” screens.
+- Refresh sessions are stored in SQLite (`data/app.db` by default) via TypeORM, so restarts won’t erase device history and multiple API instances can share the same file (or point `DB_PATH` elsewhere).
+- Use `GET /auth/sessions` to list active devices, `DELETE /auth/sessions/:sessionId` to revoke one device, and `DELETE /auth/sessions` to log out everywhere without touching other accounts.
+
+> Production tip: swap SQLite for Postgres/MySQL by changing the TypeORM configuration (or point `DB_PATH` to a cloud disk). The entity is storage-agnostic, so you can move to Redis/SQL Server with minimal tweaks.
 
 ### JWT security attacks & prevention
 
@@ -168,6 +183,20 @@ Authenticates the user and returns both access & refresh tokens.
 
   "refreshTokenExpiresIn": "7d",
   "refreshTokenExpiresAt": "2026-02-01T10:00:00.000Z",
+  "session": {
+    "sessionId": "3c7c9a1e-16e1-4d6f-9f06-2b9c2a901234",
+    "familyId": "c0f3e9ab-0bd5-4eb7-8a32-0a6a8790cabc",
+    "createdAt": "2026-01-12T10:00:00.000Z",
+    "updatedAt": "2026-01-12T10:00:00.000Z",
+    "expiresAt": "2026-01-19T10:00:00.000Z",
+    "maxExpiresAt": "2026-02-11T10:00:00.000Z",
+    "metadata": {
+      "deviceId": "pixel-8-pro",
+      "deviceName": "Pixel 8 Pro",
+      "ipAddress": "203.0.113.42",
+      "userAgent": "Mozilla/5.0 ..."
+    }
+  },
   "user": {
     "id": "1",
     "email": "ada@example.com",
@@ -230,6 +259,47 @@ curl -X POST http://localhost:3000/auth/logout \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"<refresh-token-from-login>"}'
 ```
+
+### `GET /auth/sessions`
+Returns every active refresh session for the authenticated user (requires a valid access token).
+
+```bash
+curl http://localhost:3000/auth/sessions \
+  -H "Authorization: Bearer <access-token>"
+```
+
+```json
+[
+  {
+    "sessionId": "3c7c9a1e-16e1-4d6f-9f06-2b9c2a901234",
+    "familyId": "c0f3e9ab-0bd5-4eb7-8a32-0a6a8790cabc",
+    "createdAt": "2026-01-12T10:00:00.000Z",
+    "updatedAt": "2026-01-12T11:45:00.000Z",
+    "expiresAt": "2026-01-19T11:45:00.000Z",
+    "maxExpiresAt": "2026-02-11T10:00:00.000Z",
+    "metadata": {
+      "deviceName": "Pixel 8 Pro",
+      "ipAddress": "203.0.113.42"
+    }
+  }
+]
+```
+
+### `DELETE /auth/sessions/:sessionId`
+Revokes a single device while leaving other sessions untouched.
+
+```bash
+curl -X DELETE http://localhost:3000/auth/sessions/3c7c9a1e-16e1-4d6f-9f06-2b9c2a901234 \
+  -H "Authorization: Bearer <access-token>"
+```
+
+### `DELETE /auth/sessions`
+Revokes *all* active sessions for the current user—handy for "Log out of all devices" buttons.
+
+```bash
+curl -X DELETE http://localhost:3000/auth/sessions \
+  -H "Authorization: Bearer <access-token>"
+```
 ```
 
 ## Testing & linting
@@ -239,9 +309,9 @@ npm run lint
 npm run test
 ```
 
+> The project now depends on SQLite and TypeORM; remember to run `npm install` after pulling these changes so `sqlite3` bindings are compiled for your platform. If `npm install` fails due to missing build tools on Windows, install the recommended MSVC build chain (`npm install --global --production windows-build-tools`) or switch to WSL.
+
+
 ## Next steps
 
-- Replace the in-memory users list with a database lookup
-- Persist issued tokens (by device) to support revocation and multi-session management
-
-Enjoy building securely! 🚀
+See [`docs/TODO.md`](docs/TODO.md) for planned improvements and open tasks.

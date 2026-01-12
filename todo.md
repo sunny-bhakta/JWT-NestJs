@@ -25,20 +25,20 @@
 - [x] Monitor and log suspicious token usage *(TokenEventsService records failed access/refresh attempts)*
 
 ### Multiple Sessions
--[ ] Support multiple tokens per user (e.g., per device)
--[ ] Track issued tokens in a database (with device/session info)
--[] Allow independent session management
-Device fingerprinting
- -[]Token family IDs
- -[]Sliding expiration
- -[]IP change detection
- -[]Redis cache for session lookup
- -[]WebAuthn binding
+- [x] Support multiple tokens per user (e.g., per device)
+- [x] Track issued tokens in a database (with device/session info)
+- [x] Allow independent session management
+- [x] Token family IDs
+- [x] Sliding expiration
+- [ ] IP change detection
+- [ ] Redis cache for session lookup
+- [ ] WebAuthn binding
+- [ ] Device fingerprinting
 ### All Sessions Logout
-- Invalidate all tokens for a user (e.g., by updating a `tokenVersion` or maintaining a blacklist)
-- Remove/expire refresh tokens from storage
-- Notify clients to clear tokens on logout
-- Ensure immediate effect across all devices/sessions
+- [ ] Invalidate all tokens for a user (e.g., by updating a `tokenVersion` or maintaining a blacklist)
+- [ ] Remove/expire refresh tokens from storage
+- [ ] Notify clients to clear tokens on logout
+- [ ] Ensure immediate effect across all devices/sessions
 
 ### When NOT to Use JWT
 
