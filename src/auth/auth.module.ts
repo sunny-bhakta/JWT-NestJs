@@ -10,6 +10,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { SigningKeysService } from './signing-keys.service';
+import { TokenEventsService } from './token-events.service';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { SigningKeysService } from './signing-keys.service';
     JwtAuthGuard,
     RefreshTokensService,
     SigningKeysService,
+    TokenEventsService,
   ],
   exports: [AuthService, JwtAuthGuard],
 })

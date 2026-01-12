@@ -24,6 +24,7 @@ export interface AuthTokensResponse {
     email: string;
     name: string;
     roles: SafeUser['roles'];
+    permissions: SafeUser['permissions'];
   };
 }
 
@@ -122,6 +123,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       roles: user.roles,
+      permissions: user.permissions,
     };
 
     const signingKey = this.signingKeysService.getActiveKey();
@@ -146,6 +148,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         roles: user.roles,
+        permissions: user.permissions,
       },
     };
   }

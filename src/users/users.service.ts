@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { User } from './interfaces/user.interface';
+import { PERMISSIONS } from 'src/utils/index.enum';
 
 export type SafeUser = Omit<User, 'passwordHash'>;
 
@@ -12,6 +13,7 @@ export class UsersService {
       email: 'ada@example.com',
       name: 'Ada Lovelace',
       roles: ['user'],
+      permissions: [PERMISSIONS.EDIT_PROFILE],
       passwordHash: bcrypt.hashSync('ChangeMe123!', 10),
     },
     {
@@ -19,6 +21,7 @@ export class UsersService {
       email: 'admin@example.com',
       name: 'Grace Hopper',
       roles: ['admin'],
+      permissions: [PERMISSIONS.VIEW_PROFILE],  
       passwordHash: bcrypt.hashSync('AdminPass123!', 10),
     },
   ];
@@ -44,7 +47,8 @@ export class UsersService {
       return undefined;
     }
 
-    const { passwordHash, ...safeUser } = user;
+    const { passwordHash, ...safeUser } = user; 
+    console.log('login:', safeUser);
     return safeUser;
   }
 }

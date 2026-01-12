@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'crypto';
 import { durationStringToMs } from '../common/utils/duration.util';
@@ -7,6 +7,8 @@ import {
   RefreshTokenMetadata,
   RefreshTokenRecord,
 } from './interfaces/refresh-token.interface';
+import { TokenErrorException } from './errors/token-error.exception';
+import { TokenEventsService } from './token-events.service';
 
 const DEFAULT_REFRESH_TTL = '7d';
 
@@ -15,7 +17,10 @@ export class RefreshTokensService {
   private readonly refreshTtlMs: number;
   private readonly tokens = new Map<string, RefreshTokenRecord>();
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly tokenEvents: TokenEventsService,
+  ) {
     const ttlInput = this.configService.get<string>(
       'JWT_REFRESH_EXPIRES_IN',
       DEFAULT_REFRESH_TTL,
@@ -70,18 +75,25 @@ export class RefreshTokensService {
   }
 
   private findValidRecord(refreshToken: string): RefreshTokenRecord {
-    console.log('Finding valid record for token:', refreshToken);
     const hash = this.hashToken(refreshToken);
-    console.log('Computed hash:', hash);
-    console.log('Current tokens stored:', Array.from(this.tokens.keys()));
     const record = this.tokens.get(hash);
     if (!record) {
-      throw new UnauthorizedException('Invalid refresh token');
+      this.tokenEvents.logRefreshTokenFailure({
+        code: 'REFRESH_TOKEN_INVALID',
+        reason: 'Refresh token not found or already used',
+        refreshTokenHash: hash,
+      });
+      throw new TokenErrorException('REFRESH_TOKEN_INVALID');
     }
 
     if (record.expiresAt.getTime() < Date.now()) {
       this.tokens.delete(hash);
-      throw new UnauthorizedException('Refresh token expired');
+      this.tokenEvents.logRefreshTokenFailure({
+        code: 'REFRESH_TOKEN_EXPIRED',
+        reason: 'Refresh token expired',
+        refreshTokenHash: hash,
+      });
+      throw new TokenErrorException('REFRESH_TOKEN_EXPIRED');
     }
 
     return { ...record, tokenHash: hash };
