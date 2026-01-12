@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { durationStringToSeconds } from '../common/utils/duration.util';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
@@ -11,12 +12,14 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { SigningKeysService } from './signing-keys.service';
 import { TokenEventsService } from './token-events.service';
+import { RefreshSessionEntity } from './entities/refresh-session.entity';
 
 @Module({
   imports: [
     ConfigModule,
     UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
+    TypeOrmModule.forFeature([RefreshSessionEntity]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

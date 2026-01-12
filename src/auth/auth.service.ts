@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
@@ -8,7 +12,7 @@ import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { RefreshTokenMetadata } from './interfaces/refresh-token.interface';
+import { RefreshSessionSnapshot, RefreshTokenMetadata } from './interfaces/refresh-token.interface';
 import { SigningKeysService } from './signing-keys.service';
 import { durationStringToMs } from '../common/utils/duration.util';
 
@@ -19,6 +23,15 @@ export interface AuthTokensResponse {
   expiresIn: string;
   refreshTokenExpiresAt: string;
   refreshTokenExpiresIn: string;
+  session: {
+    sessionId: string;
+    familyId: string;
+    createdAt: string;
+    updatedAt: string;
+    expiresAt: string;
+    maxExpiresAt: string;
+    metadata?: RefreshTokenMetadata;
+  };
   user: {
     id: string;
     email: string;
@@ -95,19 +108,24 @@ export class AuthService {
     }
 
     return this.buildAuthResponse(user, {
-      deviceId: metadata?.deviceId ?? loginDto.deviceId,
-      deviceName: metadata?.deviceName ?? loginDto.deviceName,
-      ipAddress: metadata?.ipAddress,
-      userAgent: metadata?.userAgent,
+      metadata: {
+        deviceId: metadata?.deviceId ?? loginDto.deviceId,
+        deviceName: metadata?.deviceName ?? loginDto.deviceName,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+      },
     });
   }
 
   async refresh(refreshTokenDto: RefreshTokenDto): Promise<AuthTokensResponse> {
-    const user = await this.refreshTokensService.consume(
+    const session = await this.refreshTokensService.consume(
       refreshTokenDto.refreshToken,
     );
 
-    return this.buildAuthResponse(user);
+    return this.buildAuthResponse(session.user, {
+      sessionId: session.sessionId,
+      metadata: session.metadata,
+    });
   }
 
   async logout(refreshTokenDto: RefreshTokenDto) {
@@ -115,10 +133,36 @@ export class AuthService {
     return { success: true };
   }
 
+  async listSessions(userId: string) {
+    return this.refreshTokensService.listSessionsForUser(userId);
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    const success = await this.refreshTokensService.revokeSession(
+      userId,
+      sessionId,
+    );
+
+    if (!success) {
+      throw new NotFoundException('Session not found');
+    }
+
+    return { success: true };
+  }
+
+  async revokeAllSessions(userId: string) {
+    const revoked = await this.refreshTokensService.revokeAllForUser(userId);
+    return { success: true, revoked };
+  }
+
   private async buildAuthResponse(
     user: SafeUser,
-    metadata?: RefreshTokenMetadata,
+    options: {
+      sessionId?: string;
+      metadata?: RefreshTokenMetadata;
+    } = {},
   ): Promise<AuthTokensResponse> {
+    const { sessionId, metadata } = options;
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -133,7 +177,7 @@ export class AuthService {
         secret: signingKey.secret,
         keyid: signingKey.id,
       }),
-      this.refreshTokensService.issue(user, metadata),
+      this.refreshTokensService.issue(user, metadata, sessionId),
     ]);
 
     return {
@@ -143,6 +187,7 @@ export class AuthService {
       expiresIn: this.expiresIn,
       refreshTokenExpiresAt: refreshToken.expiresAt.toISOString(),
       refreshTokenExpiresIn: this.refreshExpiresIn,
+      session: this.serializeSession(refreshToken.session),
       user: {
         id: user.id,
         email: user.email,
@@ -215,5 +260,17 @@ export class AuthService {
     }
 
     return value.toLowerCase() === 'true';
+  }
+
+  private serializeSession(session: RefreshSessionSnapshot) {
+    return {
+      sessionId: session.sessionId,
+      familyId: session.familyId,
+      createdAt: session.createdAt.toISOString(),
+      updatedAt: session.updatedAt.toISOString(),
+      expiresAt: session.expiresAt.toISOString(),
+      maxExpiresAt: session.maxExpiresAt.toISOString(),
+      metadata: session.metadata,
+    };
   }
 }

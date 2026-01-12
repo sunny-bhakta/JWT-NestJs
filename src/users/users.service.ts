@@ -48,7 +48,6 @@ export class UsersService {
     }
 
     const { passwordHash, ...safeUser } = user; 
-    console.log('login:', safeUser);
     return safeUser;
   }
 }
