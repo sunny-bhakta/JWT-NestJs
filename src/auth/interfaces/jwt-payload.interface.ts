@@ -6,4 +6,5 @@ export interface JwtPayload {
   iss?: string;
   iat?: number;
   exp?: number;
+  permissions?: string[];
 }

@@ -19,16 +19,21 @@
 
 ### Best Practices
 - [x] Use short-lived access tokens and refresh tokens
-- Validate token audience (`aud`) and issuer (`iss`)
-- Limit token scope and permissions
-- Handle token errors gracefully
-- Monitor and log suspicious token usage
+- [x] Limit token scope and permissions
+- [x] Handle token errors gracefully *(TokenErrorException + structured 401 responses)*
+- [x] Validate token audience (`aud`) and issuer (`iss`) *(JwtStrategy enforces configured claims)*
+- [x] Monitor and log suspicious token usage *(TokenEventsService records failed access/refresh attempts)*
 
 ### Multiple Sessions
-- Support multiple tokens per user (e.g., per device)
-- Track issued tokens in a database (with device/session info)
-- Allow independent session management
-
+-[ ] Support multiple tokens per user (e.g., per device)
+-[ ] Track issued tokens in a database (with device/session info)
+-[] Allow independent session management
+Device fingerprinting
+ -[]Token family IDs
+ -[]Sliding expiration
+ -[]IP change detection
+ -[]Redis cache for session lookup
+ -[]WebAuthn binding
 ### All Sessions Logout
 - Invalidate all tokens for a user (e.g., by updating a `tokenVersion` or maintaining a blacklist)
 - Remove/expire refresh tokens from storage

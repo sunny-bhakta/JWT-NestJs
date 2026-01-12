@@ -12,6 +12,7 @@ export class AppService {
       id: user.sub,
       email: user.email,
       roles: user.roles,
+      permissions: user.permissions,
     };
   }
 }

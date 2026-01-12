@@ -108,6 +108,32 @@ This pattern keeps tokens away from `localStorage/sessionStorage`; browsers will
 
 > Checklist tie-in: these mitigations cover the remaining `JWT security attacks & prevention` item from `todo.md`. Extend this table with organization-specific controls (e.g., anomaly detection, device posture signals) as your threat model evolves.
 
+### Handling token errors gracefully
+
+Access and refresh token failures now surface as structured `401` responses so clients can react deterministically:
+
+```json
+{
+  "statusCode": 401,
+  "error": "Unauthorized",
+  "code": "ACCESS_TOKEN_EXPIRED",
+  "message": "Your access token has expired. Please refresh and try again."
+}
+```
+
+- `ACCESS_TOKEN_MISSING` – no bearer token provided.
+- `ACCESS_TOKEN_INVALID` – malformed or tampered JWT.
+- `ACCESS_TOKEN_EXPIRED` – expired access token, prompt for refresh.
+- `REFRESH_TOKEN_INVALID` – unknown/rotated refresh token (already consumed or invalid).
+- `REFRESH_TOKEN_EXPIRED` – refresh token TTL elapsed; require re-login.
+
+These responses originate from the custom `JwtAuthGuard` override and the refresh-token service so the API always returns the same shape regardless of where the failure happened.
+
+### Audience/issuer validation & monitoring
+
+- The `JwtModule` signs every token with the configured `JWT_AUDIENCE` and `JWT_ISSUER`, and the custom `JwtStrategy` refuses any bearer token whose claims don’t match those values.
+- `TokenEventsService` records every failed access or refresh token attempt (code, reason, IP, path, user-agent) so you can ship logs to your SIEM and flag suspicious usage patterns.
+
 > 💡 Swap `JWT_ACCESS_SECRET` for RSA/ECDSA key pairs by pointing `JwtModule` to `privateKey`/`publicKey` files when you’re ready for asymmetric signing.
 
 ## Demo credentials
